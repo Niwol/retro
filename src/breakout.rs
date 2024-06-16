@@ -949,7 +949,7 @@ const LEVEL_SELECT_ITEMS: [&'static str; 6] = [
 const GAME_OVER_ITEMS: [&'static str; 2] = ["Retry", "Main Menu"];
 const GAME_WON_ITEMS: [&'static str; 2] = ["Next Level", "Main Menu"];
 
-const ITEM_BACKGROUND_SELECTED: Color = Color::rgb(0.2, 0.2, 0.2);
+const ITEM_BACKGROUND_SELECTED: Color = Color::rgb(0.3, 0.3, 0.3);
 const ITEM_BACKGROUND_NORMAL: Color = Color::BLACK;
 
 #[derive(Resource)]
@@ -1031,11 +1031,8 @@ fn load_menu(mut commands: Commands) {
                     width: Val::Px(GAME_AREA.width()),
                     height: Val::Px(GAME_AREA.height()),
 
-                    border: UiRect::all(Val::Px(3.0)),
-
                     ..Default::default()
                 },
-                border_color: BorderColor(Color::RED),
                 ..Default::default()
             },
             MainMenuNode,

@@ -3,7 +3,7 @@ use bevy::{app::AppExit, prelude::*};
 use crate::application::{CurrentGame, MENU_AREA};
 
 const ITEM_BACKGROUND_NORMAL: Color = Color::BLACK;
-const ITEM_BACKGROUND_SELECTED: Color = Color::DARK_GRAY;
+const ITEM_BACKGROUND_SELECTED: Color = Color::rgb(0.3, 0.3, 0.3);
 
 const MENU_ITEMS: [&'static str; 3] = ["Breakout", "Settings", "Exit"];
 
