@@ -1,5 +1,7 @@
 # A collection of basic retro games
 
+![plot](screenshots/breakout.png)
+
 # Available games:
 * Breakout
 
