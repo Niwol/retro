@@ -163,12 +163,10 @@ fn handle_input_select(
 
     match MENU_ITEMS[index] {
         "Breakout" => {
-            println!("Starting breakout");
             next_game.set(CurrentGame::Breakout);
         }
-        "Settings" => println!("Settings"),
+        "Settings" => (),
         "Exit" => {
-            println!("Exiting app");
             exit_event.send(AppExit);
         }
         _ => panic!("Selected impossible menu item"),

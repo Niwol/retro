@@ -5,20 +5,25 @@ pub const WINDOW_RESOLUTION: [f32; 2] = [MENU_SIZE.x + GAME_SIZE.x, MENU_SIZE.y]
 pub const GAME_SIZE: Vec2 = Vec2 { x: 800.0, y: 600.0 };
 pub const MENU_SIZE: Vec2 = Vec2 { x: 300.0, y: 800.0 };
 
-const MARGINE_TOP_BOTTOM: f32 = (MENU_SIZE.y - GAME_SIZE.y) / 2.0;
 pub const MENU_AREA: Rect = Rect {
-    min: Vec2 { x: 0.0, y: 0.0 },
-    max: MENU_SIZE,
+    min: Vec2 {
+        x: -WINDOW_RESOLUTION[0] / 2.0,
+        y: -WINDOW_RESOLUTION[1] / 2.0,
+    },
+    max: Vec2 {
+        x: -WINDOW_RESOLUTION[0] / 2.0 + MENU_SIZE.x,
+        y: -WINDOW_RESOLUTION[1] / 2.0 + MENU_SIZE.y,
+    },
 };
 
 pub const GAME_AREA: Rect = Rect {
     min: Vec2 {
         x: MENU_AREA.max.x,
-        y: MARGINE_TOP_BOTTOM,
+        y: -GAME_SIZE.y / 2.0,
     },
     max: Vec2 {
         x: MENU_AREA.max.x + GAME_SIZE.x,
-        y: GAME_SIZE.y + MARGINE_TOP_BOTTOM,
+        y: GAME_SIZE.y / 2.0,
     },
 };
 
@@ -28,10 +33,6 @@ pub enum CurrentGame {
     InMainMenu,
     Breakout,
 }
-
-// Resources
-#[derive(Resource)]
-pub struct GameEntity(pub Entity);
 
 pub struct Application;
 
@@ -47,26 +48,11 @@ impl Plugin for Application {
             ..Default::default()
         }))
         .insert_state(CurrentGame::InMainMenu)
+        .insert_resource(ClearColor(Color::GRAY))
         .add_systems(Startup, setup);
     }
 }
 
 fn setup(mut commands: Commands) {
     commands.spawn(Camera2dBundle::default());
-
-    let game_entity = commands
-        .spawn(SpriteBundle {
-            sprite: Sprite {
-                color: Color::BLACK,
-                rect: Some(Rect::from_center_size(Vec2::ZERO, GAME_AREA.size())),
-                ..Default::default()
-            },
-            transform: Transform::from_translation(
-                Vec3::X * (GAME_AREA.center().x - WINDOW_RESOLUTION[0] / 2.0),
-            ),
-            ..Default::default()
-        })
-        .id();
-
-    commands.insert_resource(GameEntity(game_entity));
 }

@@ -4,13 +4,13 @@ use bevy::prelude::*;
 
 use crate::application::{CurrentGame, GAME_AREA, GAME_SIZE, WINDOW_RESOLUTION};
 
-const PLAYER_SIZE: Vec2 = Vec2 { x: 150.0, y: 15.0 };
-const PLAYER_GROW_SIZE: Vec2 = Vec2 { x: 300.0, y: 15.0 };
-const PLAYER_SHRINK_SIZE: Vec2 = Vec2 { x: 100.0, y: 15.0 };
+const PLAYER_SIZE: Vec2 = Vec2 { x: 300.0, y: 10.0 };
+const PLAYER_GROW_SIZE: Vec2 = Vec2 { x: 400.0, y: 10.0 };
+const PLAYER_SHRINK_SIZE: Vec2 = Vec2 { x: 200.0, y: 10.0 };
 const PLAYER_AXIS: f32 = -GAME_SIZE.y / 2.0 + 20.0;
 
 const PLAYER_SPEED: f32 = 300.0;
-const BALL_SPEED: f32 = 300.0;
+const BALL_SPEED: f32 = 500.0;
 const UPGRADE_SPEED: f32 = 100.0;
 
 const BALL_COLOR: Color = Color::rgb(0.2, 1.0, 0.2);
@@ -221,6 +221,9 @@ fn segment_intersets(p11: Vec2, p12: Vec2, p21: Vec2, p22: Vec2) -> bool {
 }
 
 fn get_orientation(p1: Vec2, p2: Vec2, p3: Vec2) -> PointOrientation {
+    //    let slope1 = (p2.y - p1.y) / (p2.x - p1.x);
+    //    let slope2 = (p3.y - p2.y) / (p3.x - p2.x);
+    //    let diff = slope2 - slope1;
     let diff = (p2.y - p1.y) * (p3.x - p2.x) - (p3.y - p2.y) * (p2.x - p1.x);
 
     if diff == 0.0 {
@@ -403,7 +406,7 @@ fn load_game(
     commands.insert_resource(game_assets);
     commands.insert_resource(LevelLoaded(false));
     commands.insert_resource(LastLevelPlayed(0));
-    let mut timer = Timer::from_seconds(15.0, TimerMode::Once);
+    let mut timer = Timer::from_seconds(3.0, TimerMode::Once);
     timer.pause();
     commands.insert_resource(UpgradeTimer { timer });
 
@@ -419,18 +422,9 @@ fn cleanup_level(
     upgrade_entities: Query<Entity, With<UpgradeComponent>>,
     mut level_loaded: ResMut<LevelLoaded>,
 ) {
+    println!("Cleaning level");
     if level_loaded.0 {
-        commands.entity(player_entity.single()).despawn();
-
-        for entity in &ball_entities {
-            commands.entity(entity).despawn();
-        }
-
-        for entity in &brick_entities {
-            commands.entity(entity).despawn();
-        }
-
-        for entity in &upgrade_entities {
+        for entity in &player_entity {
             commands.entity(entity).despawn();
         }
 
@@ -454,18 +448,18 @@ fn cleanup_game(
         sprites.remove(brick_sprite.clone());
     }
     sprites.remove(game_assets.spawner_brick.clone());
-    sprites.remove(game_assets.upgrade_brick.clone());
-    sprites.remove(game_assets.grow_upgrade.clone());
-    sprites.remove(game_assets.shrink_upgrade.clone());
 
     commands.remove_resource::<GameAssets>();
     commands.remove_resource::<LevelLoaded>();
     commands.remove_resource::<LastLevelPlayed>();
-    commands.remove_resource::<UpgradeTimer>();
 }
 
-fn setup(mut next_in_game_state: ResMut<NextState<InGameState>>) {
+fn setup(
+    mut next_in_game_state: ResMut<NextState<InGameState>>,
+    mut game_over_text: Query<&mut Visibility, With<LastLevelCompleteText>>,
+) {
     next_in_game_state.set(InGameState::Paused);
+    *game_over_text.single_mut() = Visibility::Hidden;
 }
 
 fn load_level(
@@ -592,7 +586,7 @@ fn spawn_ball(
     mut commands: Commands,
     game_assets: Res<GameAssets>,
 ) {
-    let radius = 10.0;
+    let radius = 5.0;
     for spawn_event in ball_spawn_event.read() {
         commands.spawn((
             SpriteBundle {
@@ -657,9 +651,7 @@ fn despawn_ball(
 ) {
     let nb_balls_despawned = despawn_ball_event.len();
     for event in despawn_ball_event.read() {
-        if let Some(mut entity_commands) = commands.get_entity(event.0) {
-            entity_commands.despawn();
-        }
+        commands.entity(event.0).despawn();
     }
 
     if nb_balls_despawned >= balls.iter().count() {
@@ -698,9 +690,7 @@ fn despawn_brick(
             _ => (),
         }
 
-        if let Some(mut entity_commands) = commands.get_entity(event.0) {
-            entity_commands.despawn();
-        }
+        commands.entity(event.0).despawn();
     }
 
     if nb_bricks_despawned >= bricks.iter().count() {
@@ -708,7 +698,7 @@ fn despawn_brick(
     }
 }
 
-fn update_balls(time: ResMut<Time>, mut balls: Query<&mut Ball>) {
+fn update_balls(time: ResMut<Time>, mut balls: Query<&mut Ball>, mut gizmos: Gizmos) {
     let dt = time.delta().as_secs_f32();
     for mut ball in &mut balls {
         let velocity = ball.velocity;
@@ -716,6 +706,9 @@ fn update_balls(time: ResMut<Time>, mut balls: Query<&mut Ball>) {
         ball.old_position = ball.current_position;
         ball.current_position += velocity * BALL_SPEED * dt;
     }
+
+    // Debug game area
+    gizmos.rect_2d(GAME_AREA.center(), 0.0, GAME_AREA.size(), Color::GREEN);
 }
 
 fn solve_ball_walls_colisions(
@@ -811,9 +804,7 @@ fn despawn_upgrade(
     mut despawn_upgrade_event: EventReader<DespawnUpgradeEvent>,
 ) {
     for despawn_event in despawn_upgrade_event.read() {
-        if let Some(mut entity_commands) = commands.get_entity(despawn_event.0) {
-            entity_commands.despawn();
-        }
+        commands.entity(despawn_event.0).despawn();
     }
 }
 
@@ -1279,6 +1270,7 @@ fn handle_main_menu_select_input(
         }
 
         "Exit" => {
+            println!("Closing Breakout");
             next_game_state.set(GameState::Exited);
             next_state.set(CurrentGame::InMainMenu);
         }
