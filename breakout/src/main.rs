@@ -3,7 +3,26 @@ use std::{f32::consts::PI, usize};
 use bevy::color::palettes;
 use bevy::prelude::*;
 
-use crate::application::{CurrentGame, GAME_AREA, GAME_SIZE, WINDOW_RESOLUTION};
+fn main() {
+    App::new()
+        .add_plugins(DefaultPlugins.set(WindowPlugin {
+            primary_window: Some(Window {
+                resolution: GAME_SIZE.into(),
+                title: String::from("Breackout"),
+                resizable: false,
+                ..Default::default()
+            }),
+            ..Default::default()
+        }))
+        .add_plugins(BreackoutPlugin)
+        .run();
+}
+
+pub const GAME_SIZE: Vec2 = Vec2 { x: 800.0, y: 600.0 };
+pub const GAME_TOP: f32 = GAME_SIZE.y / 2.0;
+pub const GAME_BOTTOM: f32 = -GAME_SIZE.y / 2.0;
+pub const GAME_LEFT: f32 = -GAME_SIZE.x / 2.0;
+pub const GAME_RIGHT: f32 = GAME_SIZE.x / 2.0;
 
 const PLAYER_SIZE: Vec2 = Vec2 { x: 150.0, y: 15.0 };
 const PLAYER_GROW_SIZE: Vec2 = Vec2 { x: 300.0, y: 15.0 };
@@ -37,7 +56,7 @@ pub struct BreackoutPlugin;
 
 impl Plugin for BreackoutPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_state(GameState::Exited)
+        app.insert_state(GameState::InMenu)
             .insert_state(InGameState::Paused)
             .add_event::<LoadLevelEvent>()
             .add_event::<SpawnBallEvent>()
@@ -47,19 +66,10 @@ impl Plugin for BreackoutPlugin {
             .add_event::<DespawnUpgradeEvent>()
             .add_event::<GameOverEvent>()
             .add_event::<GameWonEvent>()
-            .add_systems(OnEnter(CurrentGame::Breakout), (load_game, load_menu))
-            .add_systems(
-                OnExit(CurrentGame::Breakout),
-                (cleanup_level, cleanup_game, cleanup_menu).chain(),
-            )
-            .add_systems(
-                OnEnter(GameState::InMenu),
-                show_menu.run_if(in_state(CurrentGame::Breakout)),
-            )
-            .add_systems(
-                OnExit(GameState::InMenu),
-                hide_menu.run_if(in_state(CurrentGame::Breakout)),
-            )
+            .add_event::<ExitGameEvent>()
+            .add_systems(Startup, (load_game, load_menu))
+            .add_systems(OnEnter(GameState::InMenu), show_menu)
+            .add_systems(OnExit(GameState::InMenu), hide_menu)
             .add_systems(
                 PreUpdate,
                 (
@@ -68,8 +78,7 @@ impl Plugin for BreackoutPlugin {
                         .run_if(on_event::<LoadLevelEvent>()),
                     spawn_ball.run_if(on_event::<SpawnBallEvent>()),
                     spawn_upgrade.run_if(on_event::<SpawnUpgradeEvent>()),
-                )
-                    .run_if(in_state(CurrentGame::Breakout)),
+                ),
             )
             .add_systems(
                 Update,
@@ -98,8 +107,7 @@ impl Plugin for BreackoutPlugin {
                         handle_pause_input.run_if(in_state(InGameState::Paused)),
                     )
                         .run_if(in_state(GameState::InGame)),
-                )
-                    .run_if(in_state(CurrentGame::Breakout)),
+                ),
             )
             .add_systems(
                 PostUpdate,
@@ -109,8 +117,13 @@ impl Plugin for BreackoutPlugin {
                     despawn_upgrade.run_if(on_event::<DespawnUpgradeEvent>()),
                     (game_over, cleanup_level).run_if(on_event::<GameOverEvent>()),
                     (game_won, cleanup_level).run_if(on_event::<GameWonEvent>()),
-                )
-                    .run_if(in_state(CurrentGame::Breakout)),
+                ),
+            )
+            .add_systems(
+                Last,
+                (cleanup_level, cleanup_game, cleanup_menu, exit_app)
+                    .chain()
+                    .run_if(on_event::<ExitGameEvent>()),
             );
     }
 }
@@ -262,6 +275,9 @@ struct GameOverEvent;
 #[derive(Event, Default)]
 struct GameWonEvent;
 
+#[derive(Event, Default)]
+struct ExitGameEvent;
+
 #[derive(Resource)]
 struct GameAssets {
     ball_sprite: Handle<Image>,
@@ -292,7 +308,6 @@ struct Background;
 
 #[derive(States, Debug, PartialEq, Eq, Hash, Clone)]
 enum GameState {
-    Exited,
     InMenu,
     InGame,
 }
@@ -330,6 +345,9 @@ fn load_game(
     mut next_game_state: ResMut<NextState<GameState>>,
     mut next_in_game_state: ResMut<NextState<InGameState>>,
 ) {
+    // Camera
+    commands.spawn(Camera2dBundle::default());
+
     // Spawn Background
     commands.spawn((
         SpriteBundle {
@@ -338,7 +356,7 @@ fn load_game(
                 custom_size: Some(GAME_SIZE),
                 ..Default::default()
             },
-            transform: Transform::from_translation(Vec3::from((GAME_AREA.center(), -1.0))),
+            transform: Transform::from_translation(-Vec3::Z),
             ..Default::default()
         },
         Background,
@@ -370,7 +388,7 @@ fn load_game(
                     },
                 ),
             ]).with_justify(JustifyText::Center),
-            transform: Transform::from_translation(Vec3::from((GAME_AREA.center() + Vec2::Y * 150.0, 1.0))),
+            transform: Transform::from_translation(Vec3::from((  Vec2::Y * 150.0, 1.0))),
             
             // gets visible once the player completes the last level
             visibility: Visibility::Hidden, 
@@ -380,16 +398,16 @@ fn load_game(
     ));
 
     // Load game assets
-    let ball_sprite = asset_server.load("breakout/sprites/balls/ball.png");
-    let player_sprit = asset_server.load("breakout/sprites/player/player.png");
+    let ball_sprite = asset_server.load("sprites/balls/ball.png");
+    let player_sprit = asset_server.load("sprites/player/player.png");
     let brick_sprites = (1..=5)
         .into_iter()
-        .map(|i| asset_server.load(format!("breakout/sprites/bricks/normal_{i}.png")))
+        .map(|i| asset_server.load(format!("sprites/bricks/normal_{i}.png")))
         .collect();
-    let spawner_brick = asset_server.load("breakout/sprites/bricks/spawner.png");
-    let upgrade_brick = asset_server.load("breakout/sprites/bricks/upgrade.png");
-    let grow_upgrade = asset_server.load("breakout/sprites/upgrades/grow_upgrade.png");
-    let shrink_upgrade = asset_server.load("breakout/sprites/upgrades/shrink_upgrade.png");
+    let spawner_brick = asset_server.load("sprites/bricks/spawner.png");
+    let upgrade_brick = asset_server.load("sprites/bricks/upgrade.png");
+    let grow_upgrade = asset_server.load("sprites/upgrades/grow_upgrade.png");
+    let shrink_upgrade = asset_server.load("sprites/upgrades/shrink_upgrade.png");
 
     let game_assets = GameAssets {
         ball_sprite,
@@ -487,7 +505,7 @@ fn load_level(
     if let Some(load_event) = event_reader.next() {
         let level = load_event.0;
 
-        let level_file = format!("assets/breakout/levels/level_{level}.txt");
+        let level_file = format!("assets/levels/level_{level}.txt");
         let file_content = std::fs::read_to_string(level_file).unwrap();
         let mut char_iter = file_content.split_whitespace();
 
@@ -499,8 +517,8 @@ fn load_level(
                 let extended_brick_size = BRICK_SIZE + 6.0;
                 let center_offset = extended_brick_size / 2.0;
                 let position = Vec3 {
-                    x: GAME_AREA.min.x + center_offset.x + x as f32 * extended_brick_size.x,
-                    y: GAME_AREA.max.y - center_offset.y - y as f32 * extended_brick_size.y,
+                    x: GAME_LEFT + center_offset.x + x as f32 * extended_brick_size.x,
+                    y: GAME_TOP - center_offset.y - y as f32 * extended_brick_size.y,
                     z: 1.0,
                 };
 
@@ -562,10 +580,7 @@ fn load_player(mut commands: Commands, game_assets: Res<GameAssets>) {
                 ..Default::default()
             },
             texture: game_assets.player_sprit.clone(),
-            transform: Transform::from_translation(Vec3::from((
-                GAME_AREA.center() + Vec2::Y * PLAYER_AXIS,
-                0.0,
-            ))),
+            transform: Transform::from_translation(Vec3::from((Vec2::Y * PLAYER_AXIS, 0.0))),
             ..Default::default()
         },
         Player,
@@ -583,7 +598,7 @@ fn load_ball(
     }
 
     ball_spawn_event.send(SpawnBallEvent {
-        location: GAME_AREA.center() + Vec2::Y * PLAYER_AXIS + Vec2::Y * 30.0,
+        location: Vec2::Y * PLAYER_AXIS + Vec2::Y * 30.0,
         initial_velocity: Vec2::Y,
     });
 }
@@ -725,25 +740,25 @@ fn solve_ball_walls_colisions(
 ) {
     for (entity, mut ball) in &mut balls {
         // Top
-        if ball.current_position.y + ball.radius > GAME_AREA.max.y {
-            ball.current_position.y = GAME_AREA.max.y - ball.radius;
+        if ball.current_position.y + ball.radius > GAME_TOP {
+            ball.current_position.y = GAME_TOP - ball.radius;
             ball.velocity.y *= -1.0;
         }
 
         // Left
-        if ball.current_position.x - ball.radius < GAME_AREA.min.x {
-            ball.current_position.x = GAME_AREA.min.x + ball.radius;
+        if ball.current_position.x - ball.radius < GAME_LEFT {
+            ball.current_position.x = GAME_LEFT + ball.radius;
             ball.velocity.x *= -1.0;
         }
 
         // Right
-        if ball.current_position.x + ball.radius > GAME_AREA.max.x {
-            ball.current_position.x = GAME_AREA.max.x - ball.radius;
+        if ball.current_position.x + ball.radius > GAME_RIGHT {
+            ball.current_position.x = GAME_RIGHT - ball.radius;
             ball.velocity.x *= -1.0;
         }
 
         // Bottom
-        if ball.current_position.y - ball.radius < GAME_AREA.min.y {
+        if ball.current_position.y - ball.radius < GAME_BOTTOM {
             despawn_ball_event.send(DespawnBallEvent(entity));
         }
     }
@@ -801,7 +816,7 @@ fn update_upgrades(
     for (entity, mut upgrade_transform) in &mut uprades {
         upgrade_transform.translation.y -= UPGRADE_SPEED * dt;
 
-        if upgrade_transform.translation.y < GAME_AREA.min.y {
+        if upgrade_transform.translation.y < GAME_BOTTOM {
             despawn_upgrade_event.send(DespawnUpgradeEvent(entity));
         }
     }
@@ -884,12 +899,12 @@ fn handle_player_input(
         player_transform.translation.x += PLAYER_SPEED * dt;
     }
 
-    if player_transform.translation.x - player_size.x / 2.0 < GAME_AREA.min.x {
-        player_transform.translation.x = GAME_AREA.min.x + player_size.x / 2.0;
+    if player_transform.translation.x - player_size.x / 2.0 < GAME_LEFT {
+        player_transform.translation.x = GAME_LEFT + player_size.x / 2.0;
     }
 
-    if player_transform.translation.x + player_size.x / 2.0 > GAME_AREA.max.x {
-        player_transform.translation.x = GAME_AREA.max.x - player_size.x / 2.0;
+    if player_transform.translation.x + player_size.x / 2.0 > GAME_RIGHT {
+        player_transform.translation.x = GAME_RIGHT - player_size.x / 2.0;
     }
 
     if input.just_pressed(KeyCode::Escape) {
@@ -1018,10 +1033,8 @@ fn load_menu(mut commands: Commands) {
                     align_items: AlignItems::Center,
                     justify_content: JustifyContent::Center,
 
-                    left: Val::Px(GAME_AREA.min.x + WINDOW_RESOLUTION[0] / 2.0),
-                    bottom: Val::Px(GAME_AREA.max.y + WINDOW_RESOLUTION[1] / 2.0),
-                    width: Val::Px(GAME_AREA.width()),
-                    height: Val::Px(GAME_AREA.height()),
+                    width: Val::Percent(100.0),
+                    height: Val::Percent(100.0),
 
                     ..Default::default()
                 },
@@ -1197,7 +1210,7 @@ fn handle_menu_select_input(
     mut load_level_event: EventWriter<LoadLevelEvent>,
     last_level_played: Res<LastLevelPlayed>,
 
-    mut next_state: ResMut<NextState<CurrentGame>>,
+    mut exit_event: EventWriter<ExitGameEvent>,
     mut next_game_state: ResMut<NextState<GameState>>,
 
     mut last_level_complete_text: Query<&mut Visibility, With<LastLevelCompleteText>>,
@@ -1216,7 +1229,7 @@ fn handle_menu_select_input(
             &mut menu_state,
             level_loaded.0,
             &mut load_level_event,
-            &mut next_state,
+            &mut exit_event,
             &mut next_game_state,
         ),
         MenuNode::LevelSelection => handle_level_selection_menu_select_input(
@@ -1247,7 +1260,7 @@ fn handle_main_menu_select_input(
     menu_state: &mut MenuState,
     level_loaded: bool,
     load_level_event: &mut EventWriter<LoadLevelEvent>,
-    next_state: &mut NextState<CurrentGame>,
+    exit_event: &mut EventWriter<ExitGameEvent>,
     next_game_state: &mut NextState<GameState>,
 ) {
     match menu_state.current_value.as_str() {
@@ -1264,8 +1277,7 @@ fn handle_main_menu_select_input(
         }
 
         "Exit" => {
-            next_game_state.set(GameState::Exited);
-            next_state.set(CurrentGame::InMainMenu);
+            exit_event.send_default();
         }
         _ => (),
     }
@@ -1342,4 +1354,8 @@ fn handle_game_won_menu_select_input(
         }
         _ => (),
     }
+}
+
+fn exit_app(mut exit_event: EventWriter<AppExit>) {
+    exit_event.send_default();
 }

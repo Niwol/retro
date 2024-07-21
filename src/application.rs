@@ -1,3 +1,4 @@
+use bevy::color::palettes;
 use bevy::prelude::*;
 
 // Constants
@@ -32,6 +33,7 @@ pub const GAME_AREA: Rect = Rect {
 pub enum CurrentGame {
     InMainMenu,
     Breakout,
+    Tetris,
 }
 
 pub struct Application;
@@ -48,7 +50,7 @@ impl Plugin for Application {
             ..Default::default()
         }))
         .insert_state(CurrentGame::InMainMenu)
-        .insert_resource(ClearColor(Color::GRAY))
+        .insert_resource(ClearColor(palettes::basic::GRAY.into()))
         .add_systems(Startup, setup);
     }
 }
